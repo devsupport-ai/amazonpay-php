@@ -1,5 +1,22 @@
 <?php
 require_once 'HttpCurl.php';
+
+
+/**
+ * Fallback implementation of mb_strlen, hardcoded to UTF-8.
+ * @param string $str
+ * @param string $enc optional encoding; ignored
+ * @return int
+ */
+function mb_strlen( $str ) {
+    $counts = count_chars($str);
+    for($i = 0x80; $i < 0xc0; $i++) {
+        unset($counts[$i]);
+    }
+    return array_sum($counts);
+}
+
+
 class PWAINBackendSDK {
 	private $fields = array ();
 	private $config = array (
@@ -913,8 +930,8 @@ class PWAINBackendSDK {
                         if(is_array($value)) {
                               $n = sizeof($value);
                               for($i = 1; $i<=$n; $i++ ) {
-                                    $parameters[$fieldMappings[$param].'.'.$i] = $value[$i-1]; 
-                              }   
+                                    $parameters[$fieldMappings[$param].'.'.$i] = $value[$i-1];
+                              }
                         }
 				// For variables that are boolean values, strtolower them
                         elseif($this->checkIfBool($value))
@@ -1165,7 +1182,7 @@ class PWAINBackendSDK {
 				}
 				if(!(is_writable(dirname(__DIR__).'/AmazonPay/config.ini'))){
 					throw new Exception("config.ini is not writable", 1);
-					
+
 				}
 			}
 
