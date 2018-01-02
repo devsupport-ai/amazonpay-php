@@ -2,20 +2,58 @@
 require_once 'HttpCurl.php';
 
 
-/**
- * Fallback implementation of mb_strlen, hardcoded to UTF-8.
- * @param string $str
- * @param string $enc optional encoding; ignored
- * @return int
- */
-function mb_strlen( $str ) {
-    $counts = count_chars($str);
-    for($i = 0x80; $i < 0xc0; $i++) {
-        unset($counts[$i]);
-    }
-    return array_sum($counts);
-}
+function _mb_strlen( $str, $encoding = null ) {
+  if ( null === $encoding ) {
+    $encoding = get_option( 'blog_charset' );
+  }
 
+  /*
+     * The solution below works only for UTF-8, so in case of a different charset
+     * just use built-in strlen().
+     */
+  if ( ! in_array( $encoding, array( 'utf8', 'utf-8', 'UTF8', 'UTF-8' ) ) ) {
+    return strlen( $str );
+  }
+
+  if ( _wp_can_use_pcre_u() ) {
+    // Use the regex unicode support to separate the UTF-8 characters into an array.
+    preg_match_all( '/./us', $str, $match );
+    return count( $match[0] );
+  }
+
+  $regex = '/(?:
+          [\x00-\x7F]                  # single-byte sequences   0xxxxxxx
+        | [\xC2-\xDF][\x80-\xBF]       # double-byte sequences   110xxxxx 10xxxxxx
+        | \xE0[\xA0-\xBF][\x80-\xBF]   # triple-byte sequences   1110xxxx 10xxxxxx * 2
+        | [\xE1-\xEC][\x80-\xBF]{2}
+        | \xED[\x80-\x9F][\x80-\xBF]
+        | [\xEE-\xEF][\x80-\xBF]{2}
+        | \xF0[\x90-\xBF][\x80-\xBF]{2} # four-byte sequences   11110xxx 10xxxxxx * 3
+        | [\xF1-\xF3][\x80-\xBF]{3}
+        | \xF4[\x80-\x8F][\x80-\xBF]{2}
+    )/x';
+
+  // Start at 1 instead of 0 since the first thing we do is decrement.
+  $count = 1;
+  do {
+    // We had some string left over from the last round, but we counted it in that last round.
+    $count--;
+
+    /*
+         * Split by UTF-8 character, limit to 1000 characters (last array element will contain
+         * the rest of the string).
+         */
+    $pieces = preg_split( $regex, $str, 1000 );
+
+    // Increment.
+    $count += count( $pieces );
+
+  // If there's anything left over, repeat the loop.
+  } while ( $str = array_pop( $pieces ) );
+
+  // Fencepost: preg_split() always returns one extra item in the array.
+  return --$count;
+}
 
 class PWAINBackendSDK {
 	private $fields = array ();
@@ -385,7 +423,7 @@ class PWAINBackendSDK {
 	 */
 	private function encrypt($K, $IV, $P = null, $A = null, $tag_length = 128) {
 		assert ( is_string ( $K ), 'The key encryption key must be a binary string.' );
-		$key_length = mb_strlen ( $K, '8bit' ) * 8;
+		$key_length = _mb_strlen ( $K, '8bit' ) * 8;
 		assert ( is_string ( $IV ), 'The Initialization Vector must be a binary string.' );
 		assert ( is_string ( $P ) || is_null ( $P ), 'The data to encrypt must be null or a binary string.' );
 		assert ( is_string ( $A ) || is_null ( $A ), 'The Additional Authentication Data must be null or a binary string.' );
@@ -729,7 +767,7 @@ class PWAINBackendSDK {
 	 * @return int
 	 */
 	private function getLength($x) {
-		return mb_strlen ( $x, '8bit' ) * 8;
+		return _mb_strlen ( $x, '8bit' ) * 8;
 	}
 
 	/**
@@ -847,7 +885,7 @@ class PWAINBackendSDK {
 	private function getHash($H, $X) {
 		$Y = [ ];
 		$Y [0] = str_pad ( '', 16, "\0" );
-		$num_blocks = ( int ) (mb_strlen ( $X, '8bit' ) / 16);
+		$num_blocks = ( int ) (_mb_strlen ( $X, '8bit' ) / 16);
 		for($i = 1; $i <= $num_blocks; $i ++) {
 			$Y [$i] = $this->getProduct ( $this->getBitXor ( $Y [$i - 1], mb_substr ( $X, ($i - 1) * 16, 16, '8bit' ) ), $H );
 		}
