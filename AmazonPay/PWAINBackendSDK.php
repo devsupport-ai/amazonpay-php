@@ -1,6 +1,14 @@
 <?php
 require_once 'HttpCurl.php';
 
+if (!function_exists('mb_substr')) {
+    function mb_substr($string, $offset, $length)
+    {
+        $arr = preg_split("//u", $string);
+        $slice = array_slice($arr, $offset + 1, $length);
+        return implode("", $slice);
+    }
+}
 
 function _mb_strlen( $str, $encoding = null ) {
   if ( null === $encoding ) {
